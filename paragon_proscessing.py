@@ -40,6 +40,7 @@ class img_processing:
         self.plots[1].imshow(self.altered_image, cmap='gray')
 
         for contour in self.contours:
+            self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
             self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
 
         self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
@@ -92,6 +93,6 @@ def get_image(path, asgrey=True, _flatten=False):
 if __name__ == "__main__":
     #img_processing.foo(a=7,b=3)
     #paragon = img_processing("test.jpg")
-    paragon = img_processing("paragon_1_small.png")
+    paragon = img_processing("pictures_small/img (1).jpg")
     paragon.process()
     paragon.show()
