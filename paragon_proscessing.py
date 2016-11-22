@@ -12,7 +12,14 @@ class img_processing:
 
     def process(self):
         self.open()
-        self.find_contours()
+        self.find_contours() # najpierw znajdź całą kartkę paragonu
+        #potem konkretne plamki (albo od razu plamik)
+        # przejdź po znalezionych plamkach (konturach) i znajdź tą, która może mieć ceny na sobie.
+        #   np. (zobaczyć która ma dużo podobnych kolorów + jest otoczona przez biel albo jakkolwiek inaczej.)
+        #   lub wziąć tą najbardziej na prawo
+        # spośród pixeli wewnątrz konturu(plamki) stworzyć nowy obrazek // kontur to tylko ramka
+        # wysłać ten obrazek do jakiejś funkcji foo, którą ja będę pisał :)
+        # foo powinna zwracać true jeśli znalazła ceny w plamce, false jeśli nie
 
     def open(self):
         self.altered_image = morphology.opening(self.altered_image, morphology.disk(len(self.altered_image) / 100))
@@ -22,7 +29,7 @@ class img_processing:
         self.altered_image = morphology.erosion(self.altered_image, morphology.disk(len(self.altered_image) / 35))
 
     def find_contours(self):
-        threshold = 0.7
+        threshold = 0.7 #powinno zależeć od wartości kolorów w obrazku, a nie być ustalane na sztywno
         connected = 'low'
         self.contours = measure.find_contours(self.altered_image, level=threshold , fully_connected=connected)
 
