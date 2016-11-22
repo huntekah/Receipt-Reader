@@ -1,0 +1,22 @@
+skopiowanie repozytorium:
+git clone https://github.com/huntekah/Receipt-Reader.git
+
+przed zaczeciem pracy: 
+git pull (sciaga bierzacy ztan repo)
+
+dodanie plików do gita:
+git add <nazwa pliku>
+git add <nazwa folderu>
+git add -u (dodaje wszystkie pliki które byly zmienione sposród tych, które nie maja czerwonego ??)
+
+sprawdzenie które pliki trzeba dodac:
+git status
+git status -s (od short)
+
+wyslanie commita (takiej paczki zmian):
+git commit -m "<wiadomosc>"
+
+wyslanie wszystkich niewyslanych commitów na github:
+git push
+
+pozostale komendy w gicie oby sie nie przydaly :D
