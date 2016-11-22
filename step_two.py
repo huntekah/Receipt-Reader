@@ -12,9 +12,15 @@ class plamka:
         self.altered_image = rgb2gray(image)
 
     def process(self):
-        self.mark_colors()
-        self.find_contours()
-        self.open()
+        self.mark_colors()  # puts white wherever it thinks there is a color
+        self.open()         # normal opening on those colors to blurr out any letters etc.
+        self.find_contours()# find all contours
+        self.contour = self.get_biggest_contour() # if there was a colorfull background
+                                                  # (see img 9 with this line commented),
+                                                  # you choose the biggest white contour
+        #self.convex() # do I need you?
+
+
         pass
 
     def open(self):
@@ -26,7 +32,8 @@ class plamka:
 
 
 
-            #self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed))
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed)/3)
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed) / 3)
             #self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
             print("seed size too big: {}! \nresize image please!".format(seed))
@@ -51,6 +58,23 @@ class plamka:
         connected = 'low'
         self.contours = measure.find_contours(self.altered_image, level=threshold , fully_connected=connected)
 
+    def convex(self, image=None):
+        if(image):
+            self.altered_image = morphology.convex_hull_image(image)
+        else:
+            self.altered_image = morphology.convex_hull_image(self.altered_image)
+
+    def get_biggest_contour(self):
+        max_area = 0
+        result = None
+        for contour in self.contours:
+            area = (max(contour[:,0])-min(contour[:,0])) * \
+                           (max(contour[:,1]) - min(contour[:,1]))
+            if max_area < area:
+                max_area = area
+                result = contour
+        assert (result != None)
+        return result
 
     def show(self):
         self.fig, self.plots = plt.subplots(1,2)
@@ -60,6 +84,7 @@ class plamka:
         for contour in self.contours:
             self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
         #    self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
+        self.plots[1].plot(self.contour[:, 1], self.contour[:, 0], linewidth=2, zorder=1)
 
         self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
                                             labelleft='off', labelbottom='off')
@@ -78,9 +103,10 @@ if __name__ == "__main__":
     images = "pictures_small/plamka"
 
     #for i in range(1,1):
-    i=random.randint(1,14)
-
+    i=random.randint(1,14) # choose one of 14 images randomly
+    #i = 11
     image = get_image(images+str(i)+".jpg", False)
+    #image = get_image("pictures_small/img (7).jpg", False)
     Plamka = plamka(image)
     Plamka.process()
     Plamka.show()
