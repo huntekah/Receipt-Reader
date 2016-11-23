@@ -5,6 +5,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import random
 
+SHOW_CONTOURS = True
+
 class plamka:
     def __init__(self,image):
         self.image = np.array(image)
@@ -18,10 +20,63 @@ class plamka:
         self.contour = self.get_biggest_contour() # if there was a colorfull background
                                                   # (see img 9 with this line commented),
                                                   # you choose the biggest white contour
+        #self.print_values_on_contour(self.contour)
+
+        '''might be usefull to look for numbers in other colored areas'''
+        # just to learn kwargs! :D
+        self.image, self.altered_image = self.trim_to_mask(source=self.image, mask=self.altered_image)
+        self.image = self.image_X_mask()
+        #self.gray_image = rgb2gray(self.image)
+
+        #self.altered_image = self.erase_colors(0.0)
+        #self.image = self.new_image(self.contour,self.image)
+        #self.altered_image = self.new_image(self.contour, self.altered_image)
+        #self.find_contours()
         #self.convex() # do I need you?
 
 
         pass
+
+    def trim_to_mask(self, **kwargs):
+        options = {
+            'source'    : self.image,
+            'mask'      : self.altered_image
+        }
+        options.update(kwargs)
+
+        image = options['source']
+        altered_image = options['mask']
+
+        region = self.choose_mask(altered_image)
+        print(region.bbox)
+        altered_image = region.filled_image
+        image = self.trim(image, region.bbox)
+        return image, altered_image
+
+    def choose_mask(self,image=None):
+        if image is None:    #default argument
+            image = self.altered_image
+
+        label_img = measure.label(image,neighbors=8)
+        regions = measure.regionprops(label_img)
+        best_region = regions[0]
+        for property in regions:
+            if best_region.area < property.area:
+                best_region = property
+        return best_region
+
+    def print_values_on_contour(self, contour):
+        for pixel in contour:
+            print(self.altered_image[pixel[0]][pixel[1]])
+
+    def trim(self, source, bbox=None, contour=None):
+        '''returns the image in the smallest box containing contour or by bbox coordinates'''
+        if bbox is None and contour is None:
+            bbox = (0, 0, len(source), len(source[0]))
+        if not (contour is None):
+            return source[min(contour[:, 0]): max(contour[:, 0]), min(contour[:, 1]): max(contour[:, 1])]
+        else:
+            return source[bbox[0]: bbox[2], bbox[1]: bbox[3]]
 
     def open(self):
         try:
@@ -39,8 +94,7 @@ class plamka:
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
-    def mark_colors(self):
-
+    def mark_colors(self,threshold=0.25):
         for i, row in enumerate(self.image):
             for j, rgb in enumerate(row):
                 r = rgb[0]
@@ -48,7 +102,7 @@ class plamka:
                 b = rgb[2]
                 grey = (int(r)+int(g)+int(b))/3
                 distance = abs(r-grey) + abs(g-grey) + abs(b-grey)
-                if distance / 255 > 0.25:    # image is 0..255 although altered is 0..1
+                if distance / 255 > threshold:    # image is 0..255 although altered is 0..1
                     self.altered_image[i][j] = 1
                 else :
                     self.altered_image[i][j] = 0
@@ -57,6 +111,8 @@ class plamka:
         threshold = 0.7 #powinno zależeć od wartości kolorów w obrazku, a nie być ustalane na sztywno
         connected = 'low'
         self.contours = measure.find_contours(self.altered_image, level=threshold , fully_connected=connected)
+
+
 
     def convex(self, image=None):
         if(image):
@@ -74,17 +130,50 @@ class plamka:
                 max_area = area
                 result = contour
         assert (result != None)
+
         return result
+
+    def image_X_mask(self, **kwargs):
+        options = {
+            'source'    : self.image,
+            'mask'      : self.altered_image
+        }
+        options.update(kwargs)
+
+        image = options['source']
+        altered_image = options['mask']
+
+        for i, row in enumerate(image):
+            for j, pixel in enumerate(row):
+                image[i][j] = [pixel[0]*altered_image[i][j],\
+                               pixel[1]*altered_image[i][j],\
+                               pixel[2]*altered_image[i][j]]
+        return image
+
+    def erase_colors(self,threshold=0.4):
+        img = np.array(self.gray_image)
+        for i, row in enumerate(self.image):
+            for j, rgb in enumerate(row):
+                r = rgb[0]
+                g = rgb[1]
+                b = rgb[2]
+                grey = (int(r)+int(g)+int(b))/3
+                distance = abs(r-grey) + abs(g-grey) + abs(b-grey)
+                if distance / 255 > threshold:    # image is 0..255 although altered is 0..1
+                    grey = max(rgb)
+                    img[i][j] = grey/255
+        return img
 
     def show(self):
         self.fig, self.plots = plt.subplots(1,2)
         self.plots[0].imshow(self.image)
         self.plots[1].imshow(self.altered_image, cmap='gray')
 
-        for contour in self.contours:
-            self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
-        #    self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
-        self.plots[1].plot(self.contour[:, 1], self.contour[:, 0], linewidth=2, zorder=1)
+        if SHOW_CONTOURS:
+            for contour in self.contours:
+                self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
+            #    self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
+            self.plots[1].plot(self.contour[:, 1], self.contour[:, 0], linewidth=2, zorder=1)
 
         self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
                                             labelleft='off', labelbottom='off')
@@ -96,6 +185,7 @@ class plamka:
         plt.show()
 
 def get_image(path, asgrey=True, _flatten=False):
+    print("loading image "+path)
     return io.imread(path, as_grey=asgrey, flatten=_flatten)
 
 
@@ -104,7 +194,7 @@ if __name__ == "__main__":
 
     #for i in range(1,1):
     i=random.randint(1,14) # choose one of 14 images randomly
-    #i = 11
+    i = 2 #to chooose specyfic image
     image = get_image(images+str(i)+".jpg", False)
     #image = get_image("pictures_small/img (7).jpg", False)
     Plamka = plamka(image)
