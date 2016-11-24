@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import random
 
-SHOW_CONTOURS = False
+SHOW_CONTOURS = True
 
 class plamka:
     def __init__(self,image):
@@ -21,16 +21,17 @@ class plamka:
                                                   # (see img 9 with this line commented),
                                                   # you choose the biggest white contour
         #self.print_values_on_contour(self.contour)
-        ''' wziac convex i po prostu wymnożyć, usunac kolory.'''
-        '''might be usefull to look for numbers in other colored areas'''
         # just to learn kwargs! :D
-        self.show()
+        #self.show()
+        self.altered_image = morphology.convex_hull_object(self.altered_image, 8)
+        #self.show()
         self.image = self.image_X_mask()
         self.show()
         self.image, self.altered_image = self.trim_to_mask(source=self.image, mask=self.convex(self.altered_image))
         #self.gray_image = rgb2gray(self.image)
+        self.show()
         self.altered_image = self.erase_colors(0.0)
-        #self.open(5)
+        self.open(5)
         self.find_contours()
 
         #self.convex() # do I need you?
@@ -58,10 +59,10 @@ class plamka:
         if image is None:    #default argument
             image = self.altered_image
 
-        label_img = measure.label(image,neighbors=8)
-        regions = measure.regionprops(label_img)
-        best_region = regions[0]
-        for property in regions:
+        self.label_img = measure.label(image,neighbors=8)
+        self.regions = measure.regionprops(self.label_img)
+        best_region = self.regions[0]
+        for property in self.regions:
             if best_region.area < property.area:
                 best_region = property
         return best_region
@@ -79,6 +80,7 @@ class plamka:
         else:
             return source[bbox[0]: bbox[2], bbox[1]: bbox[3]]
 
+    #should wrap in decorator!
     def open(self, alpha=2.5):
         try:
             #self.altered_image = np.array(self.image[:,:,1])
@@ -88,12 +90,28 @@ class plamka:
 
 
 
-            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed)/ alpha)
-            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed) / alpha)
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / alpha))
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / alpha))
             #self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(10))
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(10))
+            print("seed size too big: {}! \nresize image please!".format(seed))
+            print(e)
+
+    def close(self, alpha=2.5):
+        try:
+            # self.altered_image = np.array(self.image[:,:,1])
+            seed = (min(len(self.altered_image), len(self.altered_image[0])) ** 2) / 10000
+            print(seed)
+            assert seed < 50  # na na na lag proof!
+
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / alpha))
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / alpha))
+            # self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
+        except AssertionError as e:
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed/alpha**2))
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed/alpha**2))
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
@@ -176,7 +194,7 @@ class plamka:
                 b = rgb[2]
                 grey = (int(r)+int(g)+int(b))/3
                 distance = abs(r-grey) + abs(g-grey) + abs(b-grey)
-                if distance / 255 > threshold:    # image is 0..255 although altered is 0..1
+                if distance / 255 >= threshold:    # image is 0..255 although altered is 0..1
                     grey = max(rgb)
                     img[i][j] = grey/255
         return img
@@ -211,7 +229,7 @@ if __name__ == "__main__":
 
     #for i in range(1,1):
     i=random.randint(1,14) # choose one of 14 images randomly
-    i = 5 #to chooose specyfic image
+    i = 1 #to chooose specyfic image
     image = get_image(images+str(i)+".jpg", False)
     #image = get_image("pictures_small/img (7).jpg", False)
     Plamka = plamka(image)
