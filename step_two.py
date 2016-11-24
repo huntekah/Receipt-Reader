@@ -1,5 +1,5 @@
 import paragon_proscessing
-from skimage import data, io, filters, feature, morphology, measure
+from skimage import data, io, filters, feature, morphology, measure, exposure
 from skimage.color import rgb2gray
 from matplotlib import pyplot as plt
 import numpy as np
@@ -13,9 +13,15 @@ class plamka:
         self.gray_image = rgb2gray(image)
         self.altered_image = rgb2gray(image)
 
+
     def process(self):
+        '''bardzo brzydka funkcja z dużą ilością komentarzy, bo eksperymentuję, ciągle je dodaję lub usuwam'''
+        seed = (min(len(self.altered_image), len(self.altered_image[0])) ** 2) / 10000
+        if seed > 70:
+            print("size too big, returning! {}".format(seed))
+            return
         self.mark_colors()  # puts white wherever it thinks there is a color
-        self.open()         # normal opening on those colors to blurr out any letters etc.
+        self.open(1)         # normal opening on those colors to blurr out any letters etc.
         self.find_contours()# find all contours
         self.contour = self.get_biggest_contour() # if there was a colorfull background
                                                   # (see img 9 with this line commented),
@@ -24,14 +30,26 @@ class plamka:
         # just to learn kwargs! :D
         #self.show()
         self.altered_image = morphology.convex_hull_object(self.altered_image, 8)
-        #self.show()
-        self.image = self.image_X_mask()
-        self.show()
+        #self.show('convex_hull_object')
+       ## self.image = self.image_X_mask()
+        #self.show('image_X_mask()')
         self.image, self.altered_image = self.trim_to_mask(source=self.image, mask=self.convex(self.altered_image))
         #self.gray_image = rgb2gray(self.image)
-        self.show()
+        #self.show('trim_to_mask')
         self.altered_image = self.erase_colors(0.0)
-        self.open(5)
+        #self.show('erase_colors')
+        #self.close(4)
+       ## self.altered_image = morphology.opening(self.altered_image, morphology.disk(3))
+        #self.show('opening disk(3)')
+        p5, p95 = np.percentile(self.altered_image, (5, 95))
+        #self.altered_image = exposure.equalize_adapthist(self.altered_image, clip_limit=0.04) # doesnt work that nice ;/
+        self.altered_image = exposure.rescale_intensity(self.altered_image, in_range=(p5, p95))
+        #self.show('rescale_intensity')
+       ## self.altered_image = morphology.opening(self.altered_image, morphology.disk(3))
+        #self.show('opening disk(3)')
+        '''OTSU ITADAKIMASU!'''
+        threshold = filters.threshold_otsu(self.altered_image)
+        self.altered_image = self.altered_image > threshold
         self.find_contours()
 
         #self.convex() # do I need you?
@@ -94,8 +112,8 @@ class plamka:
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / alpha))
             #self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
-            self.altered_image = morphology.closing(self.altered_image, morphology.disk(10))
-            self.altered_image = morphology.opening(self.altered_image, morphology.disk(10))
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed/(alpha**2)))
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed/(alpha**2)))
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
@@ -110,8 +128,8 @@ class plamka:
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / alpha))
             # self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
-            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed/alpha**2))
-            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed/alpha**2))
+            self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed/(alpha**2)))
+            self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed/(alpha**2)))
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
@@ -199,7 +217,7 @@ class plamka:
                     img[i][j] = grey/255
         return img
 
-    def show(self):
+    def show(self, text='altered'):
         self.fig, self.plots = plt.subplots(1,2)
         self.plots[0].imshow(self.image)
         self.plots[1].imshow(self.altered_image, cmap='gray')
@@ -207,7 +225,7 @@ class plamka:
         if SHOW_CONTOURS:
             for contour in self.contours:
                 self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
-                self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
+               # self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
           #  self.plots[1].plot(self.contour[:, 1], self.contour[:, 0], linewidth=2, zorder=1)
 
         self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
@@ -215,9 +233,32 @@ class plamka:
         self.plots[1].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
                                             labelleft='off', labelbottom='off')
         self.plots[0].set_title("oryginal",fontsize=10)
-        self.plots[1].set_title("altered",fontsize=10)
+        self.plots[1].set_title(text,fontsize=10)
 
         plt.show()
+
+    def save(self, **kwargs): # or self.__class__.__name__
+        options = {
+            'filename': "figure_"+type(self).__name__
+        }
+        options.update(kwargs)
+        filename = options['filename']
+        #io.imsave(filename,self.altered_image) # coś nie działa
+
+        self.fig, self.plots = plt.subplots(1, 2)
+        self.plots[0].imshow(self.image)
+        self.plots[1].imshow(self.altered_image, cmap='gray')
+
+        self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
+                                  labelleft='off', labelbottom='off')
+        self.plots[1].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
+                                  labelleft='off', labelbottom='off')
+        self.plots[0].set_title("oryginal", fontsize=10)
+        self.plots[1].set_title("altered", fontsize=10)
+        ''' upewnić się, że ten folder istnieje!!!!'''
+        filename = "finals/"+filename
+        self.fig.savefig(filename)
+        print(filename + " has been saved")
 
 def get_image(path, asgrey=True, _flatten=False):
     print("loading image "+path)
@@ -227,11 +268,12 @@ def get_image(path, asgrey=True, _flatten=False):
 if __name__ == "__main__":
     images = "pictures_small/plamka"
 
-    #for i in range(1,1):
-    i=random.randint(1,14) # choose one of 14 images randomly
-    i = 1 #to chooose specyfic image
-    image = get_image(images+str(i)+".jpg", False)
+    for i in range(1,15):
+        #i=random.randint(1,14) # choose one of 14 images randomly
+        #i = 2 #to chooose specyfic image
+        image = get_image(images+str(i)+".jpg", False)
     #image = get_image("pictures_small/img (7).jpg", False)
-    Plamka = plamka(image)
-    Plamka.process()
-    Plamka.show()
+        Plamka = plamka(image)
+        Plamka.process()
+        Plamka.save(filename="no_multiply_no_openings"+str(i)+".jpg")
+    #Plamka.show('final')
