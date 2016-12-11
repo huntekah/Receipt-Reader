@@ -1,20 +1,26 @@
 import paragon_proscessing
-from skimage import data, io, filters, feature, morphology, measure, exposure, color, util
+from skimage import data, io, filters, feature, morphology, measure, exposure, color
 # from skimage.color import rgb2gray, rgb2hsv, hsv2rgb
 from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 import random
-from CART import cart, MOMENTS_HU
 
 SHOW_CONTOURS = False
-CART_DEPTH = 9
-FIND_CONTORUS_THRESHOLD = 0.7
-MARK_COLORS_THRESHOLD = 0.25
-ALPHA = 2.5
-PERCENTILE_0 = 0.1
-PERCENTILE_1 = 0.4
-ERASE_COLORS_THRESHOLD = 0.4
+# 0..9 + 10 as nothingness
+MOMENTS_HU = [
+    [5.67387500e-01, 9.21207734e-02, 1.31548831e-04, 4.16906116e-05, 1.92353804e-09, 3.27366905e-06, -2.41503441e-09],
+    [7.95980240e-01, 5.61109524e-01, 8.55233907e-02, 5.61481759e-02, 3.87583725e-03, 4.14445378e-02, -3.41613871e-04],
+    [6.68827215e-01, 2.35039955e-01, 1.85919959e-03, 2.75797883e-03, 6.19918694e-06, 1.21394435e-03, -7.57068092e-07],
+    [6.06211220e-01, 1.68984849e-01, 8.93090218e-03, 2.26979587e-03, -7.51558195e-06, -8.35967378e-04, 6.92483592e-06],
+    [3.79485136e-01, 5.23798391e-02, 1.79097536e-02, 1.50869373e-03, 5.49193421e-06, 1.80390881e-04, -5.59831874e-06],
+    [5.44284192e-01, 1.35437274e-01, 8.97205488e-04, 1.29810635e-03, 1.33243917e-06, 4.15055511e-04, 4.32625639e-07],
+    [5.19558117e-01, 1.03780001e-01, 3.38571807e-03, 6.01567441e-04, -7.48199935e-07, -1.40403977e-04, -4.21020678e-07],
+    [0.73996331, 0.34283568, 0.19079798, 0.06287306, 0.00633353, 0.0331251, -0.00270317],
+    [4.12277593e-01, 6.14852249e-02, 4.51063234e-05, 4.14472974e-05, 1.78855138e-09, 7.62670685e-06, -1.12774941e-10],
+    [4.57194069e-01, 7.96740412e-02, 5.59728600e-03, 9.01552985e-04, -3.01233001e-07, -3.84320096e-05, -2.00270802e-06],
+    [2.06150459e-01, 1.47415876e-02, 4.69286118e-09, 3.50242886e-11, -8.60566804e-21, -4.19067688e-12, -1.12946039e-20]]
+
 
 class plamka:
     def __init__(self, image):
@@ -23,7 +29,7 @@ class plamka:
         self.altered_image = color.rgb2gray(image)
 
     def process(self):
-        '''Main function that lead's threw the image altering process'''
+        '''bardzo brzydka funkcja z dużą ilością komentarzy, bo eksperymentuję, ciągle je dodaję lub usuwam'''
         seed = (min(len(self.altered_image), len(self.altered_image[0])) ** 2) / 10000
         if seed > 70:
             print("size too big, returning! {}".format(seed))
@@ -32,161 +38,86 @@ class plamka:
         self.open(1)  # normal opening on those colors to blurr out any letters etc.
         self.find_contours()  # find all contours
         self.contour = self.get_biggest_contour()  # if there was a colorfull background
+        # (see img 9 with this line commented),
         # you choose the biggest white contour
         self.altered_image = morphology.convex_hull_object(self.altered_image, 8)
         self.image, self.altered_image = self.trim_to_mask(source=self.image, mask=self.convex(self.altered_image))
+        # self.show_histogram(image=self.image, label2="histogram1", bins = 256)
         self.altered_image = self.erase_colors(0.0)
-        ''' go threw some of the possibilities to find all numbers! (10,40) (5,90) etc'''
-        p5, p95 = np.percentile(self.altered_image, (PERCENTILE_0, PERCENTILE_1))
+        # self.show_histogram(image=self.altered_image, label2="histogram1", bins=256)
+        # self.show('erase_colors')
+        ''' go threw all some of the possibilities to find all numbers! (10,40) (5,90) etc'''
+        p5, p95 = np.percentile(self.altered_image, (10, 40))
         self.altered_image = exposure.rescale_intensity(self.altered_image, in_range=(p5, p95))
+        # self.show_histogram(image=self.altered_image, label2="rescale intensity", bins=256)
+        # self.show('rescale intensity')
         '''OTSU ITADAKIMASU!'''
         threshold = filters.threshold_otsu(self.altered_image)
         self.altered_image = self.altered_image > threshold
+        # self.find_contours()
+        # self.show_histogram(image=self.altered_image, label2="rescale intensity", bins=256)
         self.altered_image = morphology.opening(self.altered_image, morphology.disk(2))
+        # Gaussian
+        self.altered_image = filters.gaussian(self.altered_image, sigma=np.sqrt(seed) / 6)
         ## label everything and check for numbers
         self.read_numbers(source=self.altered_image)
 
         pass
 
     def read_numbers(self, **kwargs):
-        '''Uses CART from sklearn to effectively read numbers. Omits stains and commas.'''
         options = {
             'source': self.altered_image,
-            'method': 'CART'
         }
         options.update(kwargs)
 
         image = options['source']
-        image = 1 - image
-        method = options['method']
 
-        ######################## CART ########################
-        if method.upper() == 'CART':
-            self.label_img = measure.label(image, neighbors=4, background=0, connectivity=1)
-            self.regions = measure.regionprops(self.label_img)
+        self.label_img = measure.label(image, neighbors=4)
+        self.regions = measure.regionprops(self.label_img)
 
-            self.final_data = []
+        big_area = self.regions[0].convex_area
+        for region in self.regions:
+            if big_area < region.convex_area:
+                big_area = region.convex_area
 
-            Cart = cart(CART_DEPTH)
+        for region in self.regions:
+            if (region.convex_area == big_area):
+                print(region.bbox)
+                print(region.moments_hu)
+                # print(region.moments_normalized)
+                print(".")
 
-            for region in self.regions:
-                #print(region.bbox)
-                #print(region.moments_hu)
-                size = (region.bbox[1] - region.bbox[0]) * (region.bbox[3] - region.bbox[2])
-                average_color = self.average_color(self.trim(self.image, bbox=region.bbox))  # !on color image
-                number = Cart.predict( (region.moments_hu).reshape(1, -1) )
-                proba = Cart.predict_proba( (region.moments_hu).reshape(1, -1) )
-                if number != 'stain' and number != 'comma':
-                    self.final_data.append((number, region.bbox, size, region.centroid, average_color, proba))
-
-            self.show1(image=image, text="All bbox'es", bbox_iterable=[region[1] for region in self.final_data], color = 'blue')
-            for number in self.final_data:
-                print("This may be: ", number[0][0], "\nwith color: ", number[4])
-                #_color = rgb2hex(number[4])
-                _color = 'red'
-                self.show1(image=image, text=str(number[0]), bbox=number[1], color = _color )
-
-    def num_of_matches(self, **kwargs):
-        options = {
-            'list': self.final_data,
-            'size': 0,
-            'tolreance': 0.3,
-            'bbox': None,  # no default value. coudl be ommited, but want to ephasize that there's such an option
-        }
-        options.update(kwargs)
-
-        list = options['list']
-        size = options['size']
-        tolerance = options['tolerance']
-        bbox = options['bbox']
-
-        min_size = size * (1 - tolerance)
-        max_size = size * (1 + tolerance)
-        count = 0
-
-        for element in list:
-            if min_size <= element[2] <= max_size:
-                count = count + 1
-
-        return count
-
-    '''Remake it into K-NN'''
     def compare_hu(self, moment, **kwargs):
-        '''Depricated version of KNN. DO NOT USE!'''
         options = {
             'example_list': MOMENTS_HU,
-            'verbose': False
+            'distance': True
         }
         options.update(kwargs)
 
         examples = options['example_list']
-        verbose = options['verbose']
-        distance = []
-        for i in range(len(examples)):
-            tmp = []
-            for j in range(len(examples[i])):
-                tmp.append(moment[j] - examples[i][j])
-            distance.append(tmp)
-        result = np.sqrt([sum(distance[i]) ** 2 for i in range(len(distance))])
-        normalize(result)
-
-        # now find percentage assigned to the list! :)
-        result = 1 - result
-        sum_r = sum(result)
-        result = [100 * (i / sum_r) for i in result]
-
-        if verbose:
-            print("dystans")
-            print(distance)
-            for i, value in enumerate(result):
-                print(i, "\t\t", value, "%")
-
-        return result
-
-    def average_color(self, image):
-        '''returns average color in given image'''
-        r, g, b = 0, 0, 0
-        count = len(image)*len(image[0])
-        for row in image:
-            for pixel in row:
-                if len(pixel) == 3:
-                    r = r + pixel[0]
-                    g = g + pixel[1]
-                    b = b + pixel[2]
-                elif len(pixel) == 1:
-                    r = r + pixel[0]
-                    g = g + pixel[0]
-                    b = b + pixel[0]
-                else:
-                    raise Exception("Wrong Input provided")
-
-        return r / count, g / count, b / count
+        distance_opt = options['distance_opt']
+        # result = [ max[:,i] for i in range(len(examples[0])) ] # LIST COMPREHENSION YAY!
+        result = ([np.sqrt(sum(moment - max[i, :])) for i in range(len(examples))])
+        for i, value in enumerate(result):
+            print(i, value)
 
     def trim_to_mask(self, **kwargs):
-        '''Returns image that has been trimmed to the given mask.
-        It chooses biggest region (see choose_mask) and trims
-        image to the bbox of that bigest region'''
         options = {
             'source': self.image,
-            'mask': self.altered_image,
-            'verbose' : False
+            'mask': self.altered_image
         }
         options.update(kwargs)
 
         image = options['source']
         altered_image = options['mask']
-        verbose = options['verbose']
 
         region = self.choose_mask(altered_image)
-        if verbose:
-            print(region.bbox)
+        print(region.bbox)
         altered_image = region.filled_image
         image = self.trim(image, region.bbox)
         return image, altered_image
 
     def choose_mask(self, image=None):
-        '''Choses region with biggest area as the best fit to be
-         the area of interest in the receipt'''
         if image is None:  # default argument
             image = self.altered_image
 
@@ -199,7 +130,6 @@ class plamka:
         return best_region
 
     def print_values_on_contour(self, contour):
-        ''' prints values x,y alongside of the given contour'''
         for pixel in contour:
             print(self.altered_image[pixel[0]][pixel[1]])
 
@@ -212,39 +142,40 @@ class plamka:
         else:
             return source[bbox[0]: bbox[2], bbox[1]: bbox[3]]
 
-    #FUTURE: should wrap in decorator!
-    def open(self, alpha=ALPHA):
-        '''performs normal opening operation'''
+    # should wrap in decorator!
+    def open(self, alpha=2.5):
         try:
+            # self.altered_image = np.array(self.image[:,:,1])
             seed = (min(len(self.altered_image), len(self.altered_image[0])) ** 2) / 10000
             print(seed)
             assert seed < 50  # na na na lag proof!
 
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / alpha))
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / alpha))
+            # self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / (alpha ** 2)))
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / (alpha ** 2)))
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
-    def close(self, alpha=ALPHA):
-        '''performs normal closing operation'''
+    def close(self, alpha=2.5):
         try:
+            # self.altered_image = np.array(self.image[:,:,1])
             seed = (min(len(self.altered_image), len(self.altered_image[0])) ** 2) / 10000
             print(seed)
-            assert seed < 50  # to prevent lags
+            assert seed < 50  # na na na lag proof!
 
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / alpha))
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / alpha))
+            # self.altered_image = filters.gaussian(self.altered_image,sigma = seed)
         except AssertionError as e:
             self.altered_image = morphology.opening(self.altered_image, morphology.disk(seed / (alpha ** 2)))
             self.altered_image = morphology.closing(self.altered_image, morphology.disk(seed / (alpha ** 2)))
             print("seed size too big: {}! \nresize image please!".format(seed))
             print(e)
 
-    def mark_colors(self, threshold=MARK_COLORS_THRESHOLD):
-        '''marks color that fit the given threshold which is distance from average grey (0..1) = (almost_grey..super_colorfull'''
+    def mark_colors(self, threshold=0.25):
         for i, row in enumerate(self.image):
             for j, rgb in enumerate(row):
                 r = rgb[0]
@@ -257,20 +188,18 @@ class plamka:
                 else:
                     self.altered_image[i][j] = 0
 
-    def find_contours(self, threshold = FIND_CONTORUS_THRESHOLD):
-        '''finds contours on the image'''
+    def find_contours(self):
+        threshold = 0.7  # powinno zależeć od wartości kolorów w obrazku, a nie być ustalane na sztywno
         connected = 'low'
         self.contours = measure.find_contours(self.altered_image, level=threshold, fully_connected=connected)
 
     def convex(self, image=None):
-        '''returns convex hull version of the image'''
-        if not(image is None):
+        if image is None:
             return morphology.convex_hull_image(image)
         else:
             return morphology.convex_hull_image(self.altered_image)
 
     def get_biggest_contour(self):
-        '''returns biggest contour'''
         max_area = 0
         result = None
         for contour in self.contours:
@@ -284,7 +213,6 @@ class plamka:
         return result
 
     def image_X_mask(self, **kwargs):
-        '''[binary] multiplicatin = (image) x (mask)'''
         options = {
             'source': self.image,
             'mask': self.altered_image,
@@ -308,9 +236,19 @@ class plamka:
                                    pixel[2] * altered_image[i][j]]
         return image
 
+    '''TODO v'''
+
+    def binary_v(self, **kwargs):
+        options = {
+            'image': self.image,
+            'threshold': 0.05,
+        }
+        options.update(kwargs)
+
+        image = options['image']
+        threshold = options['threshold']
 
     def show_histogram(self, **kwargs):
-        '''shows histogram of given image'''
         options = {
             'image': self.altered_image,
             'bins': 256,
@@ -336,8 +274,7 @@ class plamka:
         self.plots[1].set_title(label2, fontsize=10)
         plt.show(block=True)
 
-    def erase_colors(self, threshold=ERASE_COLORS_THRESHOLD, **kwargs):
-        '''try's its best to erase all colors'''
+    def erase_colors(self, threshold=0.4, **kwargs):
         options = {
             'image': self.image,
         }
@@ -359,7 +296,6 @@ class plamka:
         return img
 
     def erase_colors_hsv(self, **kwargs):
-        '''does color deletion using info from hsv scale'''
         options = {
             'image': self.image,
             'threshold': 0.4
@@ -373,48 +309,11 @@ class plamka:
         for i, row in enumerate(image):
             for j, pixel in enumerate(row):
                 h, s, v = pixel
+                # if v >= threshold:  # image is 0..255 although altered is 0..1
                 img[i][j] = v * (1 - s)
         return img
 
-    def show1(self,image=None, text='altered', bbox=[0, 0, 0, 0], color = 'red', bbox_iterable = None, oryginal_image = None):
-        '''Used to show the bbox around certain stain/number (good for showing results)'''
-        if image is None:
-            image = self.altered_image
-        if oryginal_image is None :
-            oryginal_image = self.image
-        self.fig, self.plots = plt.subplots(1, 2)
-        self.plots[0].imshow(oryginal_image)
-        self.plots[1].imshow(image, cmap='gray')
-
-        if SHOW_CONTOURS:
-            for contour in self.contours:
-                self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
-
-        ####
-        if not(bbox_iterable is None):
-            for bbox in bbox_iterable:
-                minr, minc, maxr, maxc = bbox
-                rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,
-                                          fill=False, edgecolor=color, linewidth=2)
-                self.plots[1].add_patch(rect)
-        minr, minc, maxr, maxc = bbox
-        rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,
-                                  fill=False, edgecolor=color, linewidth=2)
-        self.plots[1].add_patch(rect)
-        ####
-
-
-        self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
-                                  labelleft='off', labelbottom='off')
-        self.plots[1].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
-                                  labelleft='off', labelbottom='off')
-        self.plots[0].set_title("oryginal", fontsize=10)
-        self.plots[1].set_title(text, fontsize=10)
-
-        plt.show(block=True)
-
     def show(self, text='altered'):
-        '''basic show function'''
         self.fig, self.plots = plt.subplots(1, 2)
         self.plots[0].imshow(self.image)
         self.plots[1].imshow(self.altered_image, cmap='gray')
@@ -424,6 +323,18 @@ class plamka:
                 self.plots[0].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
                 # self.plots[1].plot(contour[:, 1], contour[:, 0], linewidth=2, zorder=1)
                 #  self.plots[1].plot(self.contour[:, 1], self.contour[:, 0], linewidth=2, zorder=1)
+
+        ####
+        self.label_img = measure.label(self.altered_image, neighbors=4)
+        self.regions = measure.regionprops(self.label_img)
+
+        for region in self.regions:
+            minr, minc, maxr, maxc = region.bbox
+            rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,
+                                      fill=False, edgecolor='red', linewidth=2)
+            self.plots[1].add_patch(rect)
+        ####
+
 
         self.plots[0].tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off',
                                   labelleft='off', labelbottom='off')
@@ -459,44 +370,30 @@ class plamka:
 
 
 def get_image(path, asgrey=True, _flatten=False):
-    '''used to load an image'''
     print("loading image " + path)
     return io.imread(path, as_grey=asgrey, flatten=_flatten)
 
 
-def normalize(_list):
-    '''used for list normalization'''
-    r_list = _list[:]
-    for i, element in enumerate(_list):
-        if isinstance(element, list):
-            r_list[i] = normalize(element)
-        else:
-            r_list[i] = (element - min(_list)) / (max(_list) - min(_list))
-    _list = r_list
-    return _list
-
-def rgb2hex(rgb):
-    '''rgb to hsv conversion'''
-    r, g, b = rgb
-    if isinstance(r, float):
-        r = int(r * 255)
-    if isinstance(r, float):
-        g = int(g * 255)
-    if isinstance(r, float):
-        b = int(b * 255)
-    r = int(max(0, min(r, 255)))
-    g = int(max(0, min(g, 255)))
-    b = int(max(0, min(b, 255)))
-    "#{0:02x}{1:02x}{2:02x}".format(255 - r, 255 - g, 255 - b)
-
 if __name__ == "__main__":
     images = "pictures_small/plamka"
-
-    for i in range(1, 14):
-        # i=random.randint(1,14) # choose one of 14 images randomly
-        image = get_image(images + str(i) + ".jpg", False)
+    images = "example_numbers/"
+    '''
+    for i in range(3,4):
+        #i=random.randint(1,14) # choose one of 14 images randomly
+        #i = 2 #to chooose specyfic image
+        image = get_image(images+str(i)+".jpg", False)
+    #image = get_image("pictures_small/img (7).jpg", False)
         Plamka = plamka(image)
         Plamka.process()
+        #Plamka.save(filename="try01/test01_"+str(i)+".jpg")
+        Plamka.show('final')'''
+    for i in range(0, 11):
+        # i=random.randint(1,14) # choose one of 14 images randomly
+        # i = 2 #to chooose specyfic image
+        image = get_image(images + str(i) + "_3.jpg", False)
+        # image = get_image("pictures_small/img (7).jpg", False)
+        Plamka = plamka(image)
+        # Plamka.process()
+        Plamka.read_numbers()
         # Plamka.save(filename="try01/test01_"+str(i)+".jpg")
         Plamka.show('final')
-

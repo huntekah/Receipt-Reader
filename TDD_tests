@@ -1,0 +1,32 @@
+from example_hu_generator import trim
+import numpy as np
+from numpy import testing
+
+
+def test_trim():
+    array = np.array([[0, 0, 0, 0],
+                      [0, 1, 0, 0],
+                      [0, 0, 1, 0],
+                      [0, 0, 0, 0]])
+    # print(trim(array))
+    assert (trim(array) == array).all()
+
+    array = np.array([[1, 1, 1, 1],
+                      [1, 1, 0, 0],
+                      [1, 0, 1, 0],
+                      [1, 0, 0, 1]])
+
+    assert (trim(array) == np.array([[1, 0, 0],
+                                     [0, 1, 0],
+                                     [0, 0, 1]])).all()
+    array = np.array([[1, 1, 1, 1],
+                      [1, 1, 0, 1],
+                      [1, 0, 0, 1],
+                      [1, 1, 1, 1]])
+    testing.assert_array_equal(trim(array), np.array([
+        [1, 0],
+        [0, 0]]))
+
+
+if __name__ == "__main__":
+    test_trim()
